@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,7 +10,7 @@
   <script type="module" id="firebase-init">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
- 
+
     const firebaseConfig = {
       apiKey: "AIzaSyDDZVGlwYLLJFkmXka2Uvzw0FU2haEZB3Q",
       authDomain: "jacinda-budget.firebaseapp.com",
@@ -20,10 +19,10 @@
       messagingSenderId: "948399063791",
       appId: "1:948399063791:web:5a01f474c83b47c367511a"
     };
- 
+
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
- 
+
     window._db = db;
     window._firestoreReady = true;
     window._setDoc = setDoc;
@@ -43,32 +42,32 @@
 <body>
   <div id="root"></div>
   <div class="saving-indicator" id="saving-indicator">✓ Saved</div>
- 
+
   <script type="text/babel">
     const { useState, useCallback, useEffect, useRef } = React;
- 
+
     const FORTNIGHTLY_INCOME = 1900;
- 
+
     function addDays(date, days) {
       const d = new Date(date);
       d.setDate(d.getDate() + days);
       return d;
     }
- 
+
     function formatDateShort(d) {
       return new Date(d).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
     }
- 
+
     function formatDateInput(d) {
       return new Date(d).toISOString().split("T")[0];
     }
- 
+
     function getFortnight(startDateStr, offset = 0) {
       const start = addDays(new Date(startDateStr), offset * 14);
       const end = addDays(start, 13);
       return { start, end, label: `${formatDateShort(start)} – ${formatDateShort(end)}` };
     }
- 
+
     const DEFAULT_ACCOUNT_TEMPLATE = [
       {
         id: "needs", label: "Account 1: Household & Bills", color: "#4a7c59",
@@ -98,13 +97,13 @@
         ],
       },
     ];
- 
+
     function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
- 
+
     function formatCurrency(val) {
       return "$" + Number(val).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
- 
+
     function expenseFortnight(dateStr, fortnights) {
       if (!dateStr) return 0;
       const d = new Date(dateStr);
@@ -113,31 +112,49 @@
       }
       return 0;
     }
- 
+
     function showSaved() {
       const el = document.getElementById("saving-indicator");
       if (el) { el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 2000); }
     }
- 
+
+    function flattenForFirestore(data) {
+      return {
+        fortnightStart: data.fortnightStart,
+        lockedItems: data.lockedItems || [],
+        upcomingExpenses: JSON.stringify(data.upcomingExpenses || []),
+        fortnightAccounts: JSON.stringify(data.fortnightAccounts || []),
+      };
+    }
+
+    function unflattenFromFirestore(data) {
+      return {
+        fortnightStart: data.fortnightStart,
+        lockedItems: data.lockedItems || [],
+        upcomingExpenses: data.upcomingExpenses ? JSON.parse(data.upcomingExpenses) : [],
+        fortnightAccounts: data.fortnightAccounts ? JSON.parse(data.fortnightAccounts) : null,
+      };
+    }
+
     async function saveToFirestore(data) {
       try {
         if (window._db && window._setDoc && window._doc) {
-          await window._setDoc(window._doc(window._db, "budget", "main"), data);
+          await window._setDoc(window._doc(window._db, "budget", "main"), flattenForFirestore(data));
           showSaved();
         }
       } catch (e) { console.error("Save error:", e); }
     }
- 
+
     async function loadFromFirestore() {
       try {
         if (window._db && window._getDoc && window._doc) {
           const snap = await window._getDoc(window._doc(window._db, "budget", "main"));
-          if (snap.exists()) return snap.data();
+          if (snap.exists()) return unflattenFromFirestore(snap.data());
         }
       } catch (e) { console.error("Load error:", e); }
       return null;
     }
- 
+
     function ConfirmDialog({ item, accountColor, onConfirm, onCancel }) {
       return (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
@@ -154,7 +171,7 @@
         </div>
       );
     }
- 
+
     function DateEditModal({ fortnights, onSave, onCancel }) {
       const [startDate, setStartDate] = useState(formatDateInput(fortnights[0].start));
       const preview = [0, 1].map(i => getFortnight(startDate, i));
@@ -182,7 +199,7 @@
         </div>
       );
     }
- 
+
     function App() {
       const [fortnightStart, setFortnightStart] = useState("2026-06-11");
       const [fortnightAccounts, setFortnightAccounts] = useState([deepClone(DEFAULT_ACCOUNT_TEMPLATE), deepClone(DEFAULT_ACCOUNT_TEMPLATE)]);
@@ -197,7 +214,7 @@
       const [loaded, setLoaded] = useState(false);
       const [dbReady, setDbReady] = useState(false);
       const saveTimer = useRef(null);
- 
+
       // Wait for Firestore to be ready
       useEffect(() => {
         if (window._firestoreReady) {
@@ -206,7 +223,7 @@
           window.addEventListener("firestore-ready", () => setDbReady(true));
         }
       }, []);
- 
+
       // Load data from Firestore on startup
       useEffect(() => {
         if (!dbReady) return;
@@ -220,7 +237,7 @@
           setLoaded(true);
         });
       }, [dbReady]);
- 
+
       // Auto-save whenever state changes
       const scheduleSave = useCallback((newState) => {
         if (!loaded) return;
@@ -229,9 +246,9 @@
           saveToFirestore(newState);
         }, 1000);
       }, [loaded]);
- 
+
       const fortnights = [0, 1].map(i => getFortnight(fortnightStart, i));
- 
+
       const updateItemLabel = useCallback((fn, accountId, itemId, newLabel) => {
         setFortnightAccounts(prev => {
           const next = deepClone(prev);
@@ -243,7 +260,7 @@
           return next;
         });
       }, [fortnightStart, upcomingExpenses, lockedItems, scheduleSave]);
- 
+
       const updateItemAmount = useCallback((fn, accountId, itemId, value, applyAll = false) => {
         const newVal = parseFloat(value) || 0;
         setFortnightAccounts(prev => {
@@ -266,9 +283,9 @@
           setTimeout(() => setJustLocked(null), 2000);
         }
       }, [fortnightStart, upcomingExpenses, lockedItems, scheduleSave]);
- 
+
       const handleLockClick = (fn, accountId, itemId) => setConfirmDialog({ fn, accountId, itemId });
- 
+
       const handleConfirmLock = () => {
         if (confirmDialog) {
           const { fn, accountId, itemId } = confirmDialog;
@@ -278,39 +295,39 @@
         }
         setConfirmDialog(null);
       };
- 
+
       const totalFixed = (fn) => fortnightAccounts[fn].reduce((sum, acc) => sum + acc.items.reduce((s, i) => s + i.amount, 0), 0);
       const expensesForFn = (fn) => upcomingExpenses.filter(e => expenseFortnight(e.date, fortnights) === fn);
       const totalUpcoming = (fn) => expensesForFn(fn).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
       const leftover = (fn) => FORTNIGHTLY_INCOME - totalFixed(fn) - totalUpcoming(fn);
- 
+
       const addExpense = () => {
         const next = [...upcomingExpenses, { id: Date.now().toString(), description: "", amount: "", date: "" }];
         setUpcomingExpenses(next);
         scheduleSave({ fortnightStart, fortnightAccounts, upcomingExpenses: next, lockedItems: [...lockedItems] });
       };
- 
+
       const removeExpense = (id) => {
         const next = upcomingExpenses.filter(e => e.id !== id);
         setUpcomingExpenses(next);
         scheduleSave({ fortnightStart, fortnightAccounts, upcomingExpenses: next, lockedItems: [...lockedItems] });
       };
- 
+
       const updateExpense = (id, field, value) => {
         const next = upcomingExpenses.map(e => e.id === id ? { ...e, [field]: value } : e);
         setUpcomingExpenses(next);
         scheduleSave({ fortnightStart, fortnightAccounts, upcomingExpenses: next, lockedItems: [...lockedItems] });
       };
- 
+
       const handleDateSave = (newStart) => {
         setFortnightStart(newStart);
         setShowDateEdit(false);
         scheduleSave({ fortnightStart: newStart, fortnightAccounts, upcomingExpenses, lockedItems: [...lockedItems] });
       };
- 
+
       const confirmAccount = confirmDialog ? fortnightAccounts[confirmDialog.fn].find(a => a.id === confirmDialog.accountId) : null;
       const confirmItem = confirmAccount ? confirmAccount.items.find(i => i.id === confirmDialog.itemId) : null;
- 
+
       if (!loaded) {
         return (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 16 }}>
@@ -319,14 +336,14 @@
           </div>
         );
       }
- 
+
       const FortnightColumn = ({ fn, compact }) => {
         const accounts = fortnightAccounts[fn];
         const fixed = totalFixed(fn);
         const upcoming = totalUpcoming(fn);
         const left = leftover(fn);
         const expenses = expensesForFn(fn);
- 
+
         return (
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 10 }}>
@@ -337,7 +354,7 @@
                 </div>
               ))}
             </div>
- 
+
             {accounts.map(account => (
               <div key={account.id} style={{ background: "white", borderRadius: 10, marginBottom: 8, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.07)" }}>
                 <div style={{ background: account.color, padding: "8px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -386,7 +403,7 @@
                 })}
               </div>
             ))}
- 
+
             <div style={{ background: "white", borderRadius: 10, overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.07)", marginBottom: 8 }}>
               <div style={{ background: "linear-gradient(to right, #2d4a3e, #3d6b55)", padding: "8px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ color: "white", fontSize: 10, fontWeight: "bold", fontFamily: "sans-serif" }}>Upcoming Expenses</span>
@@ -410,7 +427,7 @@
                 </button>
               </div>
             </div>
- 
+
             <div style={{ background: left >= 0 ? "linear-gradient(135deg, #2d5a3d, #4a7c59)" : "linear-gradient(135deg, #7c2d2d, #a04040)", borderRadius: 10, padding: "12px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
               <p style={{ fontSize: 10, color: "rgba(255,255,255,0.8)", fontFamily: "sans-serif" }}>Available</p>
               <p style={{ fontSize: compact ? 16 : 20, fontWeight: "bold", color: "white", fontFamily: "sans-serif" }}>{formatCurrency(left)}</p>
@@ -418,7 +435,7 @@
           </div>
         );
       };
- 
+
       return (
         <div>
           {confirmDialog && confirmItem && confirmAccount && (
@@ -427,7 +444,7 @@
           {showDateEdit && (
             <DateEditModal fortnights={fortnights} onSave={handleDateSave} onCancel={() => setShowDateEdit(false)} />
           )}
- 
+
           <div style={{ background: "linear-gradient(to right, #2d4a3e, #3d6b55)", padding: "20px 18px 14px", color: "white", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" }}>
             <div style={{ maxWidth: 1000, margin: "0 auto" }}>
               <p style={{ fontSize: 10, letterSpacing: 3, opacity: 0.7, textTransform: "uppercase", fontFamily: "sans-serif" }}>Fortnightly Budget</p>
@@ -441,7 +458,7 @@
               <p style={{ marginTop: 3, fontSize: 12, opacity: 0.75, fontFamily: "sans-serif" }}>Income: {formatCurrency(FORTNIGHTLY_INCOME)} · {fortnights[0].label}</p>
             </div>
           </div>
- 
+
           <div style={{ maxWidth: 1000, margin: "0 auto", padding: "14px 14px 40px" }}>
             {!splitView && (
               <>
@@ -472,7 +489,7 @@
         </div>
       );
     }
- 
+
     const root = ReactDOM.createRoot(document.getElementById("root"));
     root.render(<App />);
   </script>
